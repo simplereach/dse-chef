@@ -1,3 +1,11 @@
+#
+# Cookbook Name:: dse-chef
+# Attributes:: default
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
+#
+# Description:: DSE default attributes
+#
+
 default[:datastax][:dse][:versions][:full] = '3.2.1-1'
 
 default[:datastax][:dse][:hadoop_enabled] = false

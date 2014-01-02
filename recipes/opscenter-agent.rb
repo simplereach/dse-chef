@@ -1,6 +1,7 @@
 #
 # Cookbook Name:: dse-chef
 # Recipe:: opscenter-agent
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
 #
 # Sets up configuration files for DSE
 #

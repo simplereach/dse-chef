@@ -1,12 +1,9 @@
 #
 # Cookbook Name:: dse-chef
 # Recipe:: configure
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
 #
-# Sets up configuration files for DSE
-#
-# Copyright 2013, SimpleReach
-#
-# All rights reserved - Do Not Redistribute
+# Description:: Sets up configuration files for DSE
 #
 
 

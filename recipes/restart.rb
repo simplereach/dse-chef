@@ -1,6 +1,7 @@
 #
 # Cookbook Name:: dse-chef
 # Recipe:: restart
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
 #
 # Restarts the DSE service
 #

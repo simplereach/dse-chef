@@ -1,3 +1,11 @@
+#
+# Cookbook Name:: dse-chef
+# Recipe:: aws_raid
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
+#
+# Description:: Sets up the RAID for Cassandra data
+#
+
 
 package 'mdadm' do
   action :install
@@ -6,16 +14,6 @@ end
 package 'xfsprogs' do
   action :install
 end
-
-# Unmount the auto-mounted ephemeral drive
-#bash 'unmount_mnt' do
-#  code <<-EOH
-#    umount /mnt
-#  EOH
-#  user 'root'
-#  cwd '/tmp'
-#  only_if 'mount | grep /mnt'
-#end
 
 mount "/mnt" do
   device "/dev/xvdb"

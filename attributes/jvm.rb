@@ -1,3 +1,11 @@
+#
+# Cookbook Name:: dse-chef
+# Attributes:: jvm
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
+#
+# Description:: JVM default attributes
+#
+
 # Override these to set the amount of memory to allocate to the JVM at
 # start-up. For production use you may wish to adjust this for your
 # environment. MAX_HEAP_SIZE is the total amount of memory dedicated

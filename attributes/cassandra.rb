@@ -1,7 +1,9 @@
-# Copyright 2013 SimpleReach
-# Author: Russ Bradberry
 #
-# DSE Cassandra CookBook
+# Cookbook Name:: dse-chef
+# Attributes:: cassandra
+# Author:: Russ Bradberry <rbradberry@simplereach.com>
+#
+# Description:: Cassandra default attributes
 #
 
 # The name of the cluster. This is mainly used to prevent machines in

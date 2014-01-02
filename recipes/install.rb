@@ -6,8 +6,6 @@
 #
 # Installs or updates DSE
 #
-# Copyright 2013, SimpleReach
-#
 # dse requires oracle/sun java, good to put this here
 
 #Set some Java defaults
