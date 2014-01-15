@@ -1,42 +1,57 @@
+dse-chef
+========
+Installs and configures [Datastax](http://www.datastax.com/) Enterprise or Datastax community [Cassandra](http://cassandra.apache.org/).
 
-#Instructions to develop on this cookbook
+Requirements
+------------
 
-* Download and install Vagrant
+### Chef
+Chef version 0.10.10+ and Ohai 0.6.12+ are required.
 
-http://downloads.vagrantup.com/
+### Platform
+* Ubuntu 12.10
 
-* Install the vagrant-aws, vagrant-omnibus, vagrant-berkshelf (or berks i forget) plugins
+**Notes**: This cookbook has been tested on the listed platforms. It may work on other platforms with or without modification.
 
-* Configure and setup a gemset that uses chef and berks, don't install the vagrant gem.
+Attributes
+----------
 
-* Berks should point at our chef server, unless you want to go chef solo, which I'd recommend, read the docs, it's quite easy to setup.  You'll probably have to configure berks to ignore ssl certs vertification.
+Recipes
+-------
+### default
+Installs and configures dse-chef.
 
-```
-# when you're ready
+### install
+Installs Java
 
-cd $cookbook_root
+Data Bags
+---------
+From the *keys* data bag, there should be an item called Datastax that includes the username and password to download Datastax Enterprise.
 
-foodcritic .
+Roles
+-----
+TODO
 
-# to see if your cookbook is ok
+Definitions
+-----------
+None
 
-vagrant up --provider=aws
+Libraries
+---------
+None
 
-#this will fail initially
+Resources/Providers
+-------------------
+None
 
-#login to the remote machine
+Usage
+-----
 
-vagrant ssh
+### Setup
+TODO
 
-# edit sudoers to !requiretty (search for 'tty')
-
-# then logout
-
-vagrant provision
-
-# watch magic happen
-
-```
-
-Be sure if using chef_client provisioner to disable notifications for that host in nagios
+Authors
+-------
+- Author:: Russell Bradberry <rbradberry@simplereach.com>
+- Author:: Eric Lubow <elubow@simplereach.com>
 
