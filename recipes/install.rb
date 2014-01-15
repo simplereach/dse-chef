@@ -31,15 +31,19 @@ apt_repository 'dse' do
   distribution 'stable'
 end
 
+full_version = node[:datastax][:dse][:versions][:full]
 node[:datastax][:dse][:versions].each do |pkg, ver|
+  pkg_version = ver.nil? ? full_version : ver
+
   apt_preference "dse-#{pkg.to_s}" do
-    pin "version #{ver}"
+    pin "version #{pkg_version}"
     pin_priority '1001'
   end
 end
 
+base_version = node[:datastax][:dse][:versions][:base].nil? ? full_version : node[:datastax][:dse][:versions][:base]
 apt_preference "dse" do
-  pin "version #{node[:datastax][:dse][:versions][:base]}"
+  pin "version #{base_version}"
   pin_priority '1001'
 end
 

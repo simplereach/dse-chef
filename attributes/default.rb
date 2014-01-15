@@ -6,7 +6,7 @@
 # Description:: DSE default attributes
 #
 
-default[:datastax][:dse][:versions][:full] = '3.2.1-1'
+default[:datastax][:dse][:versions][:full] = '3.2.3-1'
 
 default[:datastax][:dse][:hadoop_enabled] = false
 default[:datastax][:dse][:solr_enabled] = false
@@ -20,19 +20,19 @@ default[:datastax][:opscenter][:use_ssl] = true     #Agent SSL Communication
 default[:datastax][:opscenter][:agent_tarball_location] = nil #Tarball location for agent
 
 # Default versions
-default[:datastax][:dse][:versions][:base] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:hive] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libhive] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:pig] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libpig] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:demos] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libsolr] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libtomcat] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libsqoop] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:liblog4j] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libmahout] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libcassandra] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:libhadoop] = default[:datastax][:dse][:versions][:full]
-default[:datastax][:dse][:versions][:'libhadoop-native'] = default[:datastax][:dse][:versions][:full]
+default[:datastax][:dse][:versions][:base] = nil
+default[:datastax][:dse][:versions][:hive] = nil
+default[:datastax][:dse][:versions][:libhive] = nil
+default[:datastax][:dse][:versions][:pig] = nil
+default[:datastax][:dse][:versions][:libpig] = nil
+default[:datastax][:dse][:versions][:demos] = nil
+default[:datastax][:dse][:versions][:libsolr] = nil
+default[:datastax][:dse][:versions][:libtomcat] = nil
+default[:datastax][:dse][:versions][:libsqoop] = nil
+default[:datastax][:dse][:versions][:liblog4j] = nil
+default[:datastax][:dse][:versions][:libmahout] = nil
+default[:datastax][:dse][:versions][:libcassandra] = nil
+default[:datastax][:dse][:versions][:libhadoop] = nil
+default[:datastax][:dse][:versions][:'libhadoop-native'] = nil
 
 
