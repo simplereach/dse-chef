@@ -28,8 +28,8 @@ default[:datastax][:jvm][:heap_new_size] = nil # 800M
 # JMX connections.
 default[:datastax][:jvm][:jmx_port] = 7199
 
-# The per thread stack size, increase this to 190k if you are getting any StackOverflow errors on startup
-default[:datastax][:jvm][:per_thread_stack_size] = '180k'
+# The per thread stack size, increase this to 300k if you are getting any StackOverflow errors on startup
+default[:datastax][:jvm][:per_thread_stack_size] = '256k'
 
 # Extra JVM Opts
 default[:datastax][:jvm][:jvm_extra_opts] = nil
