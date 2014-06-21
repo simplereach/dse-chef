@@ -21,6 +21,11 @@ package 'libjna-java' do
   action :install
 end
 
+# NUMA is good and should be installed on Cassandra
+package 'numactl' do
+  action :install
+end
+
 # grab the dse password information
 dse = data_bag_item('keys', 'datastax')
 
