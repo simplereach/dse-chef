@@ -16,6 +16,33 @@ HADOOP_ENABLED=<%=node[:datastax][:dse][:hadoop_enabled] ? 1 : 0%>
 <% if node[:datastax][:dse][:hadoop_enabled] %>
 CFS_REPLICATION_FACTOR=<%=node[:datastax][:dse][:cfs_replication_factor]%>
 <%end%>
+
 # enable this to start Solr search indexing on this machine.  If left disabled,
 # this will act as a regular Cassandra node.
 SOLR_ENABLED=<%=node[:datastax][:dse][:solr_enabled] ? 1 : 0%>
+
+# Install root
+if [ -d /usr/share/dse ]; then
+    DSE_HOME=<%= node[:datastax][:dse][:dse_home] %>
+fi
+
+# Location of log output
+OUTPUT_FILE=<%= node[:datastax][:dse][:output_file] %>
+
+# Configuration directory
+CONFDIR=<%= node[:datastax][:dse][:output_file] %>
+
+# Set the PID file location here
+PIDFILE=<%= node[:datastax][:dse][:pid_file] %>
+
+# Where do Hadoop log files go? This will override the default
+#HADOOP_LOG_DIR=
+
+# Where do Tomcat log files go? This will override the default
+#TOMCAT_LOGS=
+
+# Ths user to use for the service
+CASSANDRA_USER=<%= node[:datastax][:cassandra][:user] %>
+
+# Ths group to use for the service
+CASSANDRA_GROUP=<%= node[:datastax][:cassandra][:group] %>

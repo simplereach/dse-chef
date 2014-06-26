@@ -13,6 +13,10 @@ default[:datastax][:dse][:hadoop_enabled] = false
 default[:datastax][:dse][:solr_enabled] = false
 default[:datastax][:dse][:extra_classpath] = nil
 default[:datastax][:dse][:cfs_replication_factor] = 1
+default[:datastax][:dse][:dse_home] = '/usr/share/dse'
+default[:datastax][:dse][:output_file] = '/var/log/cassandra/output.log'
+default[:datastax][:dse][:conf_dir] = '/etc/dse/cassandra'
+default[:datastax][:dse][:pid_file] = '/var/run/$NAME/$NAME.pid'
 
 
 default[:datastax][:opscenter][:host] = '127.0.0.1' #IP Address to point the opscenter agent at

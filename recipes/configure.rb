@@ -6,6 +6,20 @@
 # Description:: Sets up configuration files for DSE
 #
 
+chef_gem 'semantic'
+require 'semantic'
+
+if node[:datastax][:dse][:versions][:libcassandra].nil?
+  version = Semantic::Version.new(node[:datastax][:dse][:versions][:full])
+else
+  version = Semantic::Version.new(node[:datastax][:dse][:versions][:libcassandra])
+end
+
+if version < Semantic::Version.new('4.0.0')
+  yaml_source = 'cassandra-1.2.yaml.erb'
+elsif version < Semantic::Version.new('4.5.0')
+  yaml_source = 'cassandra-2.0.yaml.erb'
+end
 
 directory node[:datastax][:cassandra][:saved_caches_directory] do
   owner 'cassandra'
@@ -34,7 +48,7 @@ template '/etc/dse/cassandra/cassandra.yaml' do
   owner 'root'
   group 'root'
   mode '0755'
-  source 'cassandra.yaml.erb'
+  source yaml_source
 end
 
 template '/etc/dse/cassandra/cassandra-env.sh' do
