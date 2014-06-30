@@ -7,9 +7,10 @@
 # Description:: DSE default attributes
 #
 
-default[:datastax][:dse][:versions][:full] = '3.2.4-1'
+default[:datastax][:dse][:versions][:full] = '4.5.0-1'
 
 default[:datastax][:dse][:hadoop_enabled] = false
+default[:datastax][:dse][:spark_enabled] = false
 default[:datastax][:dse][:solr_enabled] = false
 default[:datastax][:dse][:extra_classpath] = nil
 default[:datastax][:dse][:cfs_replication_factor] = 1
@@ -20,7 +21,7 @@ default[:datastax][:dse][:pid_file] = '/var/run/$NAME/$NAME.pid'
 
 
 default[:datastax][:opscenter][:host] = '127.0.0.1' #IP Address to point the opscenter agent at
-default[:datastax][:opscenter][:version] = '4.0.0-1'  #Opscenter version
+default[:datastax][:opscenter][:version] = '4.1.4-1'  #Opscenter version
 default[:datastax][:opscenter][:use_ssl] = true     #Agent SSL Communication
 default[:datastax][:opscenter][:agent_tarball_location] = nil #Tarball location for agent
 
