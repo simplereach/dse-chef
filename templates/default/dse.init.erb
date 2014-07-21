@@ -1,0 +1,272 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          dse
+# Required-Start:    $remote_fs
+# Required-Stop:     $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: distributed storage system for structured data
+# Description:       Cassandra is a distributed (peer-to-peer) system for
+#                    the management and storage of structured data.
+### END INIT INFO
+
+
+DESC="DSE daemon"
+NAME=dse
+PIDFILE=/var/run/$NAME.pid
+SCRIPTNAME=/etc/init.d/$NAME
+CONFDIR=/etc/dse/cassandra
+JSVC=/usr/bin/jsvc
+WAIT_FOR_START=30
+HADOOP_ENABLED=0
+SOLR_ENABLED=0
+JSVC_INIT=1
+CFS_REPLICATION_FACTOR=1
+FD_LIMIT=<%= node[:datastax][:init][:fd_limit] %>
+EXTRA_FLAGS=""
+DSE_DAEMON="com.datastax.bdp.server.DseDaemon"
+
+# The first existing directory is used for JAVA_HOME if needed.
+JVM_SEARCH_DIRS="/usr/lib/jvm/java-6-sun"
+
+[ -e /usr/share/dse/dse.jar ] || exit 5
+[ -e /etc/dse/dse-env.sh ] || exit 6
+[ -e /etc/dse/cassandra/cassandra-env.sh ] || exit 6
+
+# Read DSE environment file.
+. /etc/dse/dse-env.sh
+
+# Read Cassandra environment file.
+. /etc/dse/cassandra/cassandra-env.sh
+
+# Read configuration variable file if it is present
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+
+if [ -z "$JVM_OPTS" ]; then
+    echo "Initialization failed; \$JVM_OPTS not set!" >&2
+    exit 6
+fi
+
+# If JAVA_HOME has not been set, try to determine it.
+if [ -z "$JAVA_HOME" ]; then
+    # If java is in PATH, use a JAVA_HOME that corresponds to that. This is
+    # both consistent with how the upstream startup script works, and how
+    # Debian works (read: the use of alternatives to set a system JVM).
+    if [ -n `which java` ]; then
+        java=`which java`
+        # Dereference symlink(s)
+        while true; do
+            if [ -h "$java" ]; then
+                java=`readlink "$java"`
+                continue
+            fi
+            break
+        done
+        JAVA_HOME="`dirname $java`/../"
+    # No JAVA_HOME set and no java found in PATH, search for a JVM.
+    else
+        for jdir in $JVM_SEARCH_DIRS; do
+            if [ -x "$jdir/bin/java" ]; then
+                JAVA_HOME="$jdir"
+                break
+            fi
+        done
+    fi
+fi
+
+# Load the VERBOSE setting and other rcS variables
+. /lib/init/vars.sh
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
+. /lib/lsb/init-functions
+
+#
+# Function that returns the applications classpath
+#
+classpath()
+{
+    cp="$EXTRA_CLASSPATH:$CLASSPATH"
+
+    # use JNA if installed in standard location
+    [ -r /usr/share/java/jna.jar ] && cp="$cp:/usr/share/java/jna.jar"
+
+    # Include the conf directory for purposes of log4j-server.properties, and
+    # commons-daemon in support of the daemonization class.
+    printf "$cp:$CONFDIR:/usr/share/java/commons-daemon.jar"
+}
+
+#
+# Function that checks user rights and also whether we can run the server
+check() {
+    # Check that we're a privileged user
+    [ `id -u` = 0 ] || exit 4
+
+    # Check if hald is executable
+    [ -x /usr/bin/dse ] || exit 5
+}
+
+#
+# Function that returns 0 if process is running, or nonzero if not.
+#
+# The nonzero value is 3 if the process is simply not running, and 1 if the
+# process is not running but the pidfile exists (to match the exit codes for
+# the "status" command; see LSB core spec 3.1, section 20.2)
+#
+CMD_PATT="-user.cassandra.+dse"
+is_running()
+{
+    if [ -f $PIDFILE ]; then
+        if [ ! -r $PIDFILE ]; then
+            return 4
+        fi
+        pid=`cat $PIDFILE`
+        grep -Eq "$CMD_PATT" "/proc/$pid/cmdline" 2>/dev/null && return 0
+        return 1
+    fi
+    return 3
+}
+
+#
+# Function that starts the daemon/service
+#
+do_start()
+{
+    # Return
+    #   0 if daemon has been started or was already running
+    #   1 if daemon could not be started
+    is_running && echo "$NAME is already running" && return 0
+
+    check
+
+    ulimit -l unlimited
+    ulimit -n "$FD_LIMIT"
+
+    HADOOP_EXTRA_FLAGS="-Dhadoop-trackers=true -Dhadoop.log.dir=$HADOOP_LOG_DIR -Djava.library.path=$JAVA_LIBRARY_PATH -Dcfs.replication=$CFS_REPLICATION_FACTOR"
+    SOLR_EXTRA_FLAGS="-Dsearch-service=true -Dcatalina.home=$CATALINA_HOME -Dcatalina.base=$CATALINA_BASE -Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Dtomcat.logs=$TOMCAT_LOGS"
+
+    if [ "$HADOOP_ENABLED" = "0" ] && [ "$SOLR_ENABLED" = "0" ]; then
+        echo "$DESC starting with Hadoop and Solr disabled (edit /etc/default/dse to enable)"
+    elif [ "$HADOOP_ENABLED" = "1" ] && [ "$SOLR_ENABLED" = "1" ]; then
+        echo "$DESC starting with Hadoop and Solr enabled (edit /etc/default/dse to disable)"
+        EXTRA_FLAGS="$EXTRA_FLAGS $HADOOP_EXTRA_FLAGS $SOLR_EXTRA_FLAGS"
+    elif [ "$HADOOP_ENABLED" = "1" ]; then
+        EXTRA_FLAGS="$EXTRA_FLAGS $HADOOP_EXTRA_FLAGS"
+        echo "$DESC starting with Hadoop enabled (edit /etc/default/dse to disable)"
+    elif [ "$SOLR_ENABLED" = "1" ]; then
+        EXTRA_FLAGS="$EXTRA_FLAGS $SOLR_EXTRA_FLAGS"
+        echo "$DESC starting with Solr enabled (edit /etc/default/dse to disable)"
+    fi
+
+    cassandra_home=`getent passwd cassandra | awk -F ':' '{ print $6; }'`
+    cd /    # jsvc doesn't chdir() for us
+
+    $JSVC \
+        -user cassandra \
+        -home $JAVA_HOME \
+        -pidfile $PIDFILE \
+        -errfile "&1" \
+        -outfile /var/log/cassandra/output.log \
+        -Dlog4j.configuration=log4j-server.properties \
+        -XX:HeapDumpPath="$cassandra_home/java_`date +%s`.hprof" \
+        -XX:ErrorFile="$cassandra_home/hs_err_`date +%s`.log" \
+        $JVM_OPTS \
+        $EXTRA_FLAGS \
+        -cp `classpath` \
+        $DSE_DAEMON
+
+    is_running
+    RESULT=$?
+    if [ $RESULT -eq 0 ]; then
+        # Make sure pid file can be read by everyone
+        chmod a+r "$PIDFILE" > /dev/null 2> /dev/null || true
+        return 0
+    fi
+    for tries in `seq $WAIT_FOR_START`; do
+        sleep 1
+        is_running
+        RESULT=$?
+        if [ $RESULT -eq 0 ]; then
+            # Make sure pid file can be read by everyone
+            chmod a+r "$PIDFILE" > /dev/null 2> /dev/null || true
+            return 0
+        fi
+    done
+    return 1
+}
+
+#
+# Function that stops the daemon/service
+#
+do_stop()
+{
+    # Return
+    #   0 if daemon has been stopped or was stopped already
+    #   1 if daemon could not be stopped
+    #   other if a failure occurred
+    is_running || return 0
+
+    check
+
+    $JSVC -stop -home $JAVA_HOME -pidfile $PIDFILE \
+            $DSE_DAEMON
+    is_running && return 1 || return 0
+}
+
+case "$1" in
+  start)
+    [ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+    do_start
+    RETVAL=$?
+    case $RETVAL in
+      0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+    esac
+    ;;
+  stop)
+    [ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
+    do_stop
+    RETVAL=$?
+    case $RETVAL in
+      0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+    esac
+    ;;
+  restart|force-reload)
+    log_daemon_msg "Restarting $DESC" "$NAME"
+    do_stop
+    RETVAL=$?
+    case $RETVAL in
+      0)
+        do_start
+        RETVAL=$?
+        case $RETVAL in
+          0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+          *) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Failed to start
+        esac
+        ;;
+      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Failed to stop
+      esac
+      ;;
+  status)
+    is_running
+    RETVAL=$?
+    case $RETVAL in
+      0) log_success_msg "$DESC is running" ;;
+      4) log_success_msg "$DESC no permission to read $PIDFILE (run as root)" ;;
+      *) log_success_msg "$DESC is not running" ;;
+    esac
+    ;;
+  reload|try-restart|condrestart)
+    echo "$0: Unimplemented feature."
+    RETVAL=3
+    ;;
+  *)
+    echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload|status}" >&2
+    RETVAL=2
+    ;;
+esac
+
+exit $RETVAL
+
+# vi:ai sw=4 ts=4 tw=0 et

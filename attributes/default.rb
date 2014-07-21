@@ -19,6 +19,8 @@ default[:datastax][:dse][:output_file] = '/var/log/cassandra/output.log'
 default[:datastax][:dse][:conf_dir] = '/etc/dse/cassandra'
 default[:datastax][:dse][:pid_file] = '/var/run/$NAME/$NAME.pid'
 
+default[:datastax][:init][:fd_limit] = 1000000
+
 
 default[:datastax][:opscenter][:host] = '127.0.0.1' #IP Address to point the opscenter agent at
 default[:datastax][:opscenter][:version] = '4.1.4-1'  #Opscenter version

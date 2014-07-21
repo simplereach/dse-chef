@@ -62,6 +62,14 @@ template '/etc/default/dse' do
   owner 'root'
   group 'root'
   mode '0644'
-  source 'dse.erb'
+  source 'dse.default.erb'
 end
 
+# for some reason Datastax set's a file descriptor limit of 100k for Cassandra,
+# this needs to be changed and it's easier to replace the file
+template '/etc/init.d/dse' do
+  owner 'root'
+  group 'root'
+  mode '0755'
+  source 'dse.init.erb'
+end
