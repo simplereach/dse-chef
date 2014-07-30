@@ -31,7 +31,7 @@ dse = data_bag_item('keys', 'datastax')
 
 apt_repository 'dse' do
   uri "http://#{dse['user']}:#{dse['password']}@debian.datastax.com/enterprise"
-  key 'https://debian.datastax.com/debian/repo_key'
+  key 'http://debian.datastax.com/debian/repo_key'
   components %w(main)
   distribution 'stable'
 end
