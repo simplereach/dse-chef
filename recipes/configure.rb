@@ -42,6 +42,13 @@ directory node[:datastax][:cassandra][:commitlog_directory] do
   recursive true
 end
 
+directory '/var/run/dse' do
+  owner 'cassandra'
+  group 'cassandra'
+  mode '0744'
+  recursive true
+end
+
 #We don't want to notify restart on these templates as we want to
 #allow the user to rolling restart their cluster on config changes
 template '/etc/dse/cassandra/cassandra.yaml' do
