@@ -17,7 +17,7 @@ end
 
 if version < Semantic::Version.new('4.0.0')
   yaml_source = 'cassandra-1.2.yaml.erb'
-elsif version < Semantic::Version.new('4.5.0')
+else # version <= Semantic::Version.new('4.5.1')
   yaml_source = 'cassandra-2.0.yaml.erb'
 end
 

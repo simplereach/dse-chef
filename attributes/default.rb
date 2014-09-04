@@ -44,4 +44,5 @@ default[:datastax][:dse][:versions][:libmahout] = nil
 default[:datastax][:dse][:versions][:libcassandra] = nil
 default[:datastax][:dse][:versions][:libhadoop] = nil
 default[:datastax][:dse][:versions][:'libhadoop-native'] = nil
+default[:datastax][:dse][:versions][:libspark] = nil
 
