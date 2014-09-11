@@ -1,58 +1,228 @@
-#! /bin/sh
+#!/bin/sh
 ### BEGIN INIT INFO
 # Provides:          dse
-# Required-Start:    $remote_fs
-# Required-Stop:     $remote_fs
+# Required-Start:    $remote_fs $network $named $time
+# Required-Stop:     $remote_fs $network $named $time
+# Should-Start:      ntp mdadm
+# Should-Stop:       ntp mdadm
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: distributed storage system for structured data
-# Description:       Cassandra is a distributed (peer-to-peer) system for
-#                    the management and storage of structured data.
+# Short-Description: DataStax Enterprise
+# Description:       The DataStax Enterprise server.
 ### END INIT INFO
-
 
 DESC="DSE daemon"
 NAME=dse
-PIDFILE=/var/run/$NAME.pid
+CASSANDRA_USER=cassandra
+PIDFILE=/var/run/$NAME/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 CONFDIR=/etc/dse/cassandra
+DSE_HOME=/usr/share/dse
+SPARK_HOME=/usr/share/dse/spark
+SHARK_HOME=/usr/share/dse/shark
+OUTPUT_FILE="/var/log/cassandra/output.log"
 JSVC=/usr/bin/jsvc
-WAIT_FOR_START=30
+WAIT_FOR_START=10
+JSVC_INIT=0
+START_STOP_DAEMON=0
+FD_LIMIT=<%= node[:datastax][:init][:fd_limit] %>
+VERBOSE=no
+
+export OUTPUT_FILE
+
+# Where to find stuff
+
+# Configuration stuff (can be overriden)
+CFS_REPLICATION_FACTOR=1
+
+# Make sure we don't use just sysctl for managing the server
+SYSTEMCTL_SKIP_REDIRECT=1
+
+# Internal variables
+RETVAL=0
+NEED_NEWLINE=0
+
+# What components to load
 HADOOP_ENABLED=0
 SOLR_ENABLED=0
-JSVC_INIT=1
-CFS_REPLICATION_FACTOR=1
-FD_LIMIT=<%= node[:datastax][:init][:fd_limit] %>
-EXTRA_FLAGS=""
-DSE_DAEMON="com.datastax.bdp.server.DseDaemon"
+SPARK_ENABLED=0
+CFS_ENABLED=0
 
 # The first existing directory is used for JAVA_HOME if needed.
-JVM_SEARCH_DIRS="/usr/lib/jvm/java-6-sun"
+JVM_SEARCH_DIRS="/usr/lib/jvm/default-java"
 
-[ -e /usr/share/dse/dse.jar ] || exit 5
-[ -e /etc/dse/dse-env.sh ] || exit 6
-[ -e /etc/dse/cassandra/cassandra-env.sh ] || exit 6
+# Load the functions provided by the os
+if [ -e /etc/debian_version ]; then
+    # Load the VERBOSE setting and other rcS variables
+    . /lib/init/vars.sh
+    # Define LSB log_* functions.
+    # Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
+    . /lib/lsb/init-functions
+elif [ -e /etc/init.d/functions ] ; then
+    . /etc/init.d/functions
+fi
 
-# Read DSE environment file.
-. /etc/dse/dse-env.sh
+# Do we have lsb support?
+type log_daemon_msg &>/dev/null
+DONT_HAVE_LSB=$?
 
-# Read Cassandra environment file.
-. /etc/dse/cassandra/cassandra-env.sh
+#
+# Function that prints a "daemon" message or log_daemon_msg if possible
+log_message_daemon() {
+  if [ $DONT_HAVE_LSB -eq 0 ]; then
+      log_daemon_msg $1 $2
+  else
+      echo -n $1 : $2
+  fi
+  NEED_NEWLINE=1
+}
+
+#
+# Function that prints a "success" message or log_success_msg if possible
+log_message_success() {
+  if [ $DONT_HAVE_LSB -eq 0 ]; then
+      log_success_msg $@
+  else
+      echo $@
+  fi
+}
+
+#
+# Function that prints a "failure" message or log_failure_msg if possible
+log_message_failure() {
+  if [ $DONT_HAVE_LSB -eq 0 ]; then
+      log_failure_msg $@
+  else
+      echo $@
+  fi
+}
+
+#
+# Function that prints a regular message or log_daemon_msg if possible
+log_message() {
+  if [ $NEED_NEWLINE -eq 1 ]; then
+      echo ""
+      NEED_NEWLINE=0
+  fi
+  if [ $DONT_HAVE_LSB -eq 0 ]; then
+      echo $@
+  else
+      echo $@
+  fi
+}
+
+#
+# Function that sets an error code and wraps up the line
+log_message_end() {
+  if [ $DONT_HAVE_LSB -eq 0 ]; then
+      log_end_msg $@
+  else
+      if [ $NEED_NEWLINE -eq 1 ]; then
+          if [ $1 -eq 0 ]; then
+              echo " OK"
+          else
+              echo " Failed"
+          fi
+          NEED_NEWLINE=0
+      fi
+      RETVAL=$1
+  fi
+}
+
+#
+# Function that prints a debug message
+log_message_debug() {
+  if [ "$VERBOSE" != "no" ]; then
+      if [ $NEED_NEWLINE -eq 1 ]; then
+          echo ""
+          NEED_NEWLINE=0
+      fi
+      echo $@
+  fi
+}
 
 # Read configuration variable file if it is present
-[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+if [ -r /etc/default/$NAME ]; then
+    log_message_debug "Loading /etc/default/$NAME"
+    . /etc/default/$NAME
+fi
 
-if [ -z "$JVM_OPTS" ]; then
-    echo "Initialization failed; \$JVM_OPTS not set!" >&2
+# Are we properly installed?
+ls "$DSE_HOME"/dse*.jar > /dev/null 2> /dev/null
+FOUND_FILE_1=$?
+ls "$DSE_HOME"/lib/dse*.jar > /dev/null 2> /dev/null
+FOUND_FILE_2=$?
+if [ ! -e "$DSE_HOME"/dse.jar -a ! -e "$DSE_HOME"/lib/dse.jar -a ! $FOUND_FILE_1 -eq 0 -a ! $FOUND_FILE_2 -eq 0 ]; then
+    log_message_failure "$NAME can not find dse*.jar in $DSE_HOME or $DSE_HOME/lib. Please ensure that /etc/default/$NAME exists and sets DSE_HOME."
+    exit 5
+fi
+PIDDIR=`dirname $PIDFILE`
+if [ ! -d "$PIDDIR" ]; then
+    mkdir -p "$PIDDIR"
+    if [ ! -d "$PIDDIR" ]; then
+        log_message_failure "$PIDDIR can not be found. Please create and make writable for user: $CASSANDRA_USER"
+        exit 5
+    fi
+fi
+owner=`stat -c %U "$PIDDIR"`
+if [ "$owner" != "$CASSANDRA_USER" ]; then
+    chown -R $CASSANDRA_USER "$PIDDIR"
+    owner=`stat -c %U "$PIDDIR"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        log_message_failure "$PIDDIR is not owned by user: $CASSANDRA_USER. Please change ownership."
+        exit 5
+    fi
+fi
+
+
+# Read DSE environment file.
+if [ -e /etc/dse/dse-env.sh ]; then
+    log_message_debug "Loading /etc/dse/dse-env.sh"
+    . /etc/dse/dse-env.sh
+elif [ -e "$DSE_HOME"/bin/dse-env.sh ]; then
+    log_message_debug "Loading $DSE_HOME/bin/dse-env.sh"
+    . "$DSE_HOME"/bin/dse-env.sh
+else
+    log_message_failure "$NAME can not find dse-env.sh in /etc/dse or $DSE_HOME/bin"
     exit 6
+fi
+
+if [ -x /sbin/start-stop-daemon ]; then
+    # If we have start_stop_daemon available to us, use it.
+    log_message_debug "Found start-stop-daemon"
+    START_STOP_DAEMON=1
+elif [ -x $JSVC -a "ignore" = "yes" ]; then
+    # NOTE: We no longer support jsvc. This is still here as an emergency fallback, but
+    # JSVC introduces permissions issues with opscenter, so rather not use this.
+
+    # If we have jsvc available to us, use it.
+    log_message_debug "Found JSVC"
+    JSVC_INIT=1
+    EXTRA_FLAGS=""
+    DSE_DAEMON="com.datastax.bdp.server.DseDaemon"
+
+    HADOOP_EXTRA_FLAGS="-Dhadoop-trackers=true -Dhadoop.log.dir=$HADOOP_LOG_DIR -Djava.library.path=$JAVA_LIBRARY_PATH -Dcfs.replication=$CFS_REPLICATION_FACTOR"
+    SOLR_EXTRA_FLAGS="-Dsearch-service=true -Dcatalina.home=$CATALINA_HOME -Dcatalina.base=$CATALINA_BASE -Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Dtomcat.logs=$TOMCAT_LOGS"
+
+    SPARK_EXTRA_FLAGS="-Dspark-trackers=true"
+
+    # The env files should have set up JVM_OPTS for us. If not we can not
+    # properly start
+    if [ -z "$JVM_OPTS" ]; then
+        log_message_failure "Initialization failed; \$JVM_OPTS not set!"
+        exit 1
+    fi
+else
+    log_message_debug "No JSVC or start-stop-daemon"
 fi
 
 # If JAVA_HOME has not been set, try to determine it.
 if [ -z "$JAVA_HOME" ]; then
-    # If java is in PATH, use a JAVA_HOME that corresponds to that. This is
-    # both consistent with how the upstream startup script works, and how
-    # Debian works (read: the use of alternatives to set a system JVM).
-    if [ -n `which java` ]; then
+    log_message_debug "No JAVA_HOME... trying to locate"
+    if [ -n "`which java`" ]; then
+        # If java is in PATH, use a JAVA_HOME that corresponds to that. This is
+        # both consistent with how the upstream startup script works, and how
+        # Debian works (read: the use of alternatives to set a system JVM).
         java=`which java`
         # Dereference symlink(s)
         while true; do
@@ -63,8 +233,8 @@ if [ -z "$JAVA_HOME" ]; then
             break
         done
         JAVA_HOME="`dirname $java`/../"
-    # No JAVA_HOME set and no java found in PATH, search for a JVM.
     else
+        # No JAVA_HOME set and no java found in PATH, search for a JVM.
         for jdir in $JVM_SEARCH_DIRS; do
             if [ -x "$jdir/bin/java" ]; then
                 JAVA_HOME="$jdir"
@@ -73,17 +243,140 @@ if [ -z "$JAVA_HOME" ]; then
         done
     fi
 fi
+JAVA="$JAVA_HOME/bin/java"
+log_message_debug "JAVA_HOME: $JAVA_HOME"
 
-# Load the VERBOSE setting and other rcS variables
-. /lib/init/vars.sh
 
-# Define LSB log_* functions.
-# Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
-. /lib/lsb/init-functions
+# Read Cassandra environment file.
+if [ -e /etc/dse/cassandra/cassandra-env.sh ]; then
+    log_message_debug "Loading /etc/dse/cassandra/cassandra-env.sh"
+    . /etc/dse/cassandra/cassandra-env.sh
+elif [ -e "$DSE_HOME"/resources/cassandra/conf/cassandra-env.sh ]; then
+    log_message_debug "Loading $DSE_HOME/resources/cassandra/conf/cassandra-env.sh"
+    . "$DSE_HOME"/resources/cassandra/conf/cassandra-env.sh
+else
+    log_message_failure "$NAME can not find cassandra-env.sh in /etc/dse/cassandra or $DSE_HOME/resources/cassandra/conf/cassandra-env.sh"
+    exit 6
+fi
+
+# Read Spark environment file.
+if [ -e /etc/dse/spark/spark-env.sh ]; then
+    log_message_debug "Loading /etc/dse/spark/spark-env.sh"
+    . /etc/dse/spark/spark-env.sh
+elif [ -e "$DSE_HOME"/resources/spark/conf/spark-env.sh ]; then
+    log_message_debug "Loading $DSE_HOME/resources/spark/conf/spark-env.sh"
+    . "$DSE_HOME"/resources/spark/conf/spark-env.sh
+else
+    log_message_failure "$NAME can not find spark-env.sh in /etc/dse/spark or $DSE_HOME/resources/spark/conf/spark-env.sh"
+    exit 6
+fi
+
+# The env files should have set up JVM_OPTS for us. If not we can not
+# properly start
+if [ -z "$JVM_OPTS" ]; then
+    log_message_failure "Initialization failed; \$JVM_OPTS not set!"
+    exit 1
+fi
+
+if [ "$SPARK_WORKER_DIR" != "" ]; then
+    if [ ! -d "$SPARK_WORKER_DIR" ]; then
+        mkdir -p "$SPARK_WORKER_DIR"
+        if [ ! -d "$SPARK_WORKER_DIR" ]; then
+            log_message_failure "$SPARK_WORKER_DIR can not be found. Please create and make writable for user: $CASSANDRA_USER"
+            exit 5
+        fi
+    fi
+    owner=`stat -c %U "$SPARK_WORKER_DIR"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        chown -R $CASSANDRA_USER "$SPARK_WORKER_DIR"
+        owner=`stat -c %U "$SPARK_WORKER_DIR"`
+        if [ "$owner" != "$CASSANDRA_USER" ]; then
+            log_message_failure "$SPARK_WORKER_DIR is not owned by user: $CASSANDRA_USER. Please change ownership."
+            exit 5
+        fi
+    fi
+fi
+
+if [ "$SPARK_TMP_DIR" != "" ]; then
+    if [ ! -d "$SPARK_TMP_DIR" ]; then
+        mkdir -p "$SPARK_TMP_DIR"
+        if [ ! -d "$SPARK_TMP_DIR" ]; then
+            log_message_failure "$SPARK_TMP_DIR can not be found. Please create and make writable for user: $CASSANDRA_USER"
+            exit 5
+        fi
+    fi
+    owner=`stat -c %U "$SPARK_TMP_DIR"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        chown -R $CASSANDRA_USER "$SPARK_TMP_DIR"
+        owner=`stat -c %U "$SPARK_TMP_DIR"`
+        if [ "$owner" != "$CASSANDRA_USER" ]; then
+            log_message_failure "$SPARK_TMP_DIR is not owned by user: $CASSANDRA_USER. Please change ownership."
+            exit 5
+        fi
+    fi
+    chmod a+w "$SPARK_TMP_DIR"
+
+    replTmp="$SPARK_TMP_DIR/repl"
+    if [ ! -d "$replTmp" ]; then
+        mkdir -p "$replTmp"
+        if [ ! -d "$replTmp" ]; then
+            log_message_failure "$replTmp can not be found. Please create and make writable for user: $CASSANDRA_USER"
+            exit 5
+        fi
+    fi
+    owner=`stat -c %U "$replTmp"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        chown -R $CASSANDRA_USER "$replTmp"
+        owner=`stat -c %U "$replTmp"`
+        if [ "$owner" != "$CASSANDRA_USER" ]; then
+            log_message_failure "$replTmp is not owned by user: $CASSANDRA_USER. Please change ownership."
+            exit 5
+        fi
+    fi
+    chmod a+w "$replTmp"
+
+    appTmp="$SPARK_TMP_DIR/app"
+    if [ ! -d "$appTmp" ]; then
+        mkdir -p "$appTmp"
+        if [ ! -d "$appTmp" ]; then
+            log_message_failure "$appTmp can not be found. Please create and make writable for user: $CASSANDRA_USER"
+            exit 5
+        fi
+    fi
+    owner=`stat -c %U "$appTmp"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        chown -R $CASSANDRA_USER "$appTmp"
+        owner=`stat -c %U "$appTmp"`
+        if [ "$owner" != "$CASSANDRA_USER" ]; then
+            log_message_failure "$appTmp is not owned by user: $CASSANDRA_USER. Please change ownership."
+            exit 5
+        fi
+    fi
+    chmod a+w "$appTmp"
+fi
+
+if [ "$SPARK_LOG_DIR" != "" ]; then
+    if [ ! -d "$SPARK_LOG_DIR" ]; then
+        mkdir -p "$SPARK_LOG_DIR"
+        if [ ! -d "$SPARK_LOG_DIR" ]; then
+            log_message_failure "$SPARK_LOG_DIR can not be found. Please create and make writable for user: $CASSANDRA_USER"
+            exit 5
+        fi
+    fi
+    owner=`stat -c %U "$SPARK_LOG_DIR"`
+    if [ "$owner" != "$CASSANDRA_USER" ]; then
+        chown -R $CASSANDRA_USER "$SPARK_LOG_DIR"
+        owner=`stat -c %U "$SPARK_LOG_DIR"`
+        if [ "$owner" != "$CASSANDRA_USER" ]; then
+            log_message_failure "$SPARK_LOG_DIR is not owned by user: $CASSANDRA_USER. Please change ownership."
+            exit 5
+        fi
+    fi
+    chmod a+w "$SPARK_LOG_DIR"
+fi
 
 #
 # Function that returns the applications classpath
-#
 classpath()
 {
     cp="$EXTRA_CLASSPATH:$CLASSPATH"
@@ -100,10 +393,28 @@ classpath()
 # Function that checks user rights and also whether we can run the server
 check() {
     # Check that we're a privileged user
-    [ `id -u` = 0 ] || exit 4
+    if [ `id -u` -ne 0 ]; then
+        log_message_failure "Need to run this as root"
+        exit 4
+    fi
 
-    # Check if hald is executable
-    [ -x /usr/bin/dse ] || exit 5
+    # Check if dse is executable
+    if [ ! -x /usr/bin/dse -a ! -x "$DSE_HOME"/bin/dse ]; then
+        log_message_failure "/usr/bin/dse and $DSE_HOME/bin/dse are not executable"
+        exit 5
+    fi
+
+    touch $OUTPUT_FILE
+    if [ $? != 0 ]; then
+        log_message_failure "Unable to write to $OUTPUT_FILE. Please ensure it's set properly in /etc/default/$NAME."
+        exit 5
+    fi
+    chown $CASSANDRA_USER $OUTPUT_FILE
+    touch $OUTPUT_FILE
+    if [ $? != 0 ]; then
+        log_message_failure "$CASSANDRA_USER is unable to write to $OUTPUT_FILE. Please ensure it's set properly in /etc/default/$NAME."
+        exit 5
+    fi
 }
 
 #
@@ -113,18 +424,38 @@ check() {
 # process is not running but the pidfile exists (to match the exit codes for
 # the "status" command; see LSB core spec 3.1, section 20.2)
 #
-CMD_PATT="-user.cassandra.+dse"
 is_running()
 {
-    if [ -f $PIDFILE ]; then
-        if [ ! -r $PIDFILE ]; then
-            return 4
+    is_running_silent
+    RETVAL=$?
+    case $RETVAL in
+      0) log_message_success "$NAME is running";;
+      *) log_message_failure "$NAME is not running";;
+    esac
+    return $RETVAL
+}
+
+is_running_silent()
+{
+    if [ $JSVC_INIT -eq 1 -o $START_STOP_DAEMON -eq 1 ]; then
+        log_message_debug "Checking directly for status"
+        if [ -f "$PIDFILE" ]; then
+            pid=`cat "$PIDFILE"`
+            grep -Eq "$PIDFILE" "/proc/$pid/cmdline" 2>/dev/null && return 0
+            return 1
         fi
-        pid=`cat $PIDFILE`
-        grep -Eq "$CMD_PATT" "/proc/$pid/cmdline" 2>/dev/null && return 0
-        return 1
+        return 3
+    else
+        log_message_debug "Using system to check for status"
+        status -p $PIDFILE $NAME > /dev/null 2>&1
     fi
-    return 3
+}
+
+is_running_silent_pid()
+{
+    log_message_debug "Checking directly for status"
+    grep -Eq "$PIDFILE" "/proc/$1/cmdline" 2>/dev/null && return 0
+    return 1
 }
 
 #
@@ -133,58 +464,140 @@ is_running()
 do_start()
 {
     # Return
-    #   0 if daemon has been started or was already running
+    #   0 if daemon has been started
     #   1 if daemon could not be started
-    is_running && echo "$NAME is already running" && return 0
+    is_running_silent
+    RETVAL=$?
+    if [ $RETVAL -eq 0 ]; then
+        log_message "$NAME is already running"
+        RETVAL=0
+        return 0
+    fi
 
     check
 
+    RETVAL=0
+    cassandra_home=`getent passwd $CASSANDRA_USER | awk -F ':' '{ print $6; }'`
+    heap_dump_f="$cassandra_home/java_`date +%s`.hprof"
+    error_log_f="$cassandra_home/hs_err_`date +%s`.log"
+
+    # Make sure the PIDFILE directory location exists
+    mkdir -p `dirname "$PIDFILE"`
+
+    # Configure the system to be more useful for us
+
+    # maximum size that can be locked into memory (memlock)
     ulimit -l unlimited
+    # maximum number of open file descriptors (nofile)
     ulimit -n "$FD_LIMIT"
 
-    HADOOP_EXTRA_FLAGS="-Dhadoop-trackers=true -Dhadoop.log.dir=$HADOOP_LOG_DIR -Djava.library.path=$JAVA_LIBRARY_PATH -Dcfs.replication=$CFS_REPLICATION_FACTOR"
-    SOLR_EXTRA_FLAGS="-Dsearch-service=true -Dcatalina.home=$CATALINA_HOME -Dcatalina.base=$CATALINA_BASE -Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Dtomcat.logs=$TOMCAT_LOGS"
-
-    if [ "$HADOOP_ENABLED" = "0" ] && [ "$SOLR_ENABLED" = "0" ]; then
-        echo "$DESC starting with Hadoop and Solr disabled (edit /etc/default/dse to enable)"
-    elif [ "$HADOOP_ENABLED" = "1" ] && [ "$SOLR_ENABLED" = "1" ]; then
-        echo "$DESC starting with Hadoop and Solr enabled (edit /etc/default/dse to disable)"
-        EXTRA_FLAGS="$EXTRA_FLAGS $HADOOP_EXTRA_FLAGS $SOLR_EXTRA_FLAGS"
-    elif [ "$HADOOP_ENABLED" = "1" ]; then
+    HADDOP_DSE_OPT=
+    SOLR_DSE_OPT=
+    SPARK_DSE_OPT=
+    if [ -x /usr/bin/dse ]; then
+        dse_CMD="/usr/bin/dse cassandra -p $PIDFILE"
+    elif [ -x "$DSE_HOME"/bin/dse ]; then
+        dse_CMD="\"$DSE_HOME\"/bin/dse cassandra -p $PIDFILE"
+    elif [ -x /usr/share/dse/bin/dse ]; then
+        dse_CMD="/usr/share/dse/bin/dse cassandra -p $PIDFILE"
+    else
+        log_message_failure "Unable to locate /usr/bin/dse or $DSE_HOME/bin/dse"
+        exit 6
+    fi
+    if [ "$HADOOP_ENABLED" = "0" ] && [ "$SOLR_ENABLED" = "0" ] && [ "$SPARK_ENABLED" = "0" ] && [ "$CFS_ENABLED" = "0" ]; then
+        log_message "$DESC starting with just Cassandra enabled (edit /etc/default/dse to enable)"
+    else
+      if [ "$HADOOP_ENABLED" = "1" ]; then
+        log_message "$DESC starting with Hadoop enabled (edit /etc/default/dse to disable)"
+        HADDOP_DSE_OPT=-t
+        dse_CMD="$dse_CMD -t"
         EXTRA_FLAGS="$EXTRA_FLAGS $HADOOP_EXTRA_FLAGS"
-        echo "$DESC starting with Hadoop enabled (edit /etc/default/dse to disable)"
-    elif [ "$SOLR_ENABLED" = "1" ]; then
+      fi
+      if [ "$SOLR_ENABLED" = "1" ]; then
+        log_message "$DESC starting with Solr enabled (edit /etc/default/dse to disable)"
+        SOLR_DSE_OPT=-s
+        dse_CMD="$dse_CMD -s"
         EXTRA_FLAGS="$EXTRA_FLAGS $SOLR_EXTRA_FLAGS"
-        echo "$DESC starting with Solr enabled (edit /etc/default/dse to disable)"
+      fi
+      if [ "$SPARK_ENABLED" = "1" ]; then
+        log_message "$DESC starting with Spark enabled (edit /etc/default/dse to disable)"
+        SPARK_DSE_OPT=-k
+        dse_CMD="$dse_CMD -k"
+        EXTRA_FLAGS="$EXTRA_FLAGS $SPARK_EXTRA_FLAGS"
+      fi
+      if [ "$CFS_ENABLED" = "1" ]; then
+        log_message "$DESC starting with CFS enabled (edit /etc/default/dse to disable)"
+        HADDOP_DSE_OPT=-c
+        dse_CMD="$dse_CMD -c"
+      fi
     fi
 
-    cassandra_home=`getent passwd cassandra | awk -F ':' '{ print $6; }'`
-    cd /    # jsvc doesn't chdir() for us
+    if [ $JSVC_INIT -eq 1 ]; then
+        log_message_debug "Using JSVC to start the server"
+        cd /    # jsvc doesn't chdir() for us
+        $JSVC \
+            -user $CASSANDRA_USER \
+            -home $JAVA_HOME \
+            -pidfile $PIDFILE \
+            -errfile "&1" \
+            -outfile $OUTPUT_FILE \
+            -Dlog4j.configuration=log4j-server.properties \
+            -XX:HeapDumpPath="$heap_dump_f" \
+            -XX:ErrorFile="$error_log_f" \
+            $JVM_OPTS \
+            $EXTRA_FLAGS \
+            -cp `classpath` \
+            $DSE_DAEMON
+    elif [ $START_STOP_DAEMON -eq 1 ]; then
+        if [ -x /usr/bin/dse_daemon ]; then
+            dse_daemon_CMD="/usr/bin/dse_daemon"
+        elif [ -x "$DSE_HOME"/bin/dse_daemon ]; then
+            dse_daemon_CMD="$DSE_HOME/bin/dse_daemon"
+        else
+            log_message_failure "Unable to locate /usr/bin/dse_daemon or $DSE_HOME/bin/dse_daemon"
+            exit 6
+        fi
 
-    $JSVC \
-        -user cassandra \
-        -home $JAVA_HOME \
-        -pidfile $PIDFILE \
-        -errfile "&1" \
-        -outfile /var/log/cassandra/output.log \
-        -Dlog4j.configuration=log4j-server.properties \
-        -XX:HeapDumpPath="$cassandra_home/java_`date +%s`.hprof" \
-        -XX:ErrorFile="$cassandra_home/hs_err_`date +%s`.log" \
-        $JVM_OPTS \
-        $EXTRA_FLAGS \
-        -cp `classpath` \
-        $DSE_DAEMON
+        EXTRA_CLASSPATH=`classpath`
 
-    is_running
+        export EXTRA_CLASSPATH
+        export EXTRA_FLAGS
+
+        log_message_debug "Using start-stop-daemon to start the server"
+        start-stop-daemon -S -c $CASSANDRA_USER -a "$dse_daemon_CMD" -q \
+            -p "$PIDFILE" -t >/dev/null || return 1
+
+        start-stop-daemon -S -c $CASSANDRA_USER -a "$dse_daemon_CMD" -b \
+            -p "$PIDFILE" -- cassandra -p "$PIDFILE" -H "$heap_dump_f" -E "$error_log_f" $HADDOP_DSE_OPT $SOLR_DSE_OPT $SPARK_DSE_OPT \
+            >/dev/null || return 2
+    else
+        log_message_debug "Using su to start the server"
+        if [ -e "$PIDFILE" ]; then
+            rm "$PIDFILE"
+        fi
+
+        touch "$PIDFILE"
+        chown $CASSANDRA_USER "$PIDFILE"
+
+        touch "$OUTPUT_FILE"
+        chown $CASSANDRA_USER "$OUTPUT_FILE"
+
+        su $CASSANDRA_USER -c "$dse_CMD -H \"$heap_dump_f\" -E \"$error_log_f\" > \"$OUTPUT_FILE\" 2>&1"
+    fi
+
+    # Did we start?
+    is_running_silent
     RESULT=$?
     if [ $RESULT -eq 0 ]; then
         # Make sure pid file can be read by everyone
         chmod a+r "$PIDFILE" > /dev/null 2> /dev/null || true
         return 0
     fi
+
+    # wait until we are up
     for tries in `seq $WAIT_FOR_START`; do
         sleep 1
-        is_running
+        is_running_silent
         RESULT=$?
         if [ $RESULT -eq 0 ]; then
             # Make sure pid file can be read by everyone
@@ -192,7 +605,10 @@ do_start()
             return 0
         fi
     done
-    return 1
+
+    # No we did not
+    RETVAL=1
+    return $RETVAL
 }
 
 #
@@ -201,72 +617,130 @@ do_start()
 do_stop()
 {
     # Return
-    #   0 if daemon has been stopped or was stopped already
+    #   0 if daemon has been stopped
     #   1 if daemon could not be stopped
     #   other if a failure occurred
-    is_running || return 0
+    is_running_silent
+    RETVAL=$?
+    if [ $RETVAL -ne 0 ]; then
+      log_message "$NAME is already stopped"
+      RETVAL=0
+      return 0
+    fi
 
     check
 
-    $JSVC -stop -home $JAVA_HOME -pidfile $PIDFILE \
-            $DSE_DAEMON
-    is_running && return 1 || return 0
+    RETVAL=0
+
+    if [ -f "$PIDFILE" ]; then
+        pid=`cat "$PIDFILE"`
+    fi
+    if [ $JSVC_INIT -eq 1 ]; then
+        log_message_debug "Stopping with jsvc"
+        $JSVC -stop -home $JAVA_HOME -pidfile $PIDFILE $DSE_DAEMON
+    elif [ $START_STOP_DAEMON -eq 1 ]; then
+        start-stop-daemon -K -p "$PIDFILE" -R TERM/30/KILL/5 >/dev/null
+        RETVAL=$?
+        rm -f "$PIDFILE"
+    else
+        log_message_debug "Stopping with killproc"
+        killproc -p $PIDFILE -t 30 $NAME
+        RETVAL=$?
+        if [ $RETVAL -eq 2 ]; then
+            return 1
+        fi
+        rm -f "$PIDFILE"
+    fi
+
+    # wait for process to stop
+    if [ "$pid" = "" ]; then
+        log_message_debug "Service stopped: no pid"
+        return 0
+    fi
+    for t in `seq 40`; do
+        is_running_silent_pid $pid
+        RETVAL=$?
+        if [ $RETVAL -ne 0 ]; then
+            log_message_debug "Service stopped: $RETVAL"
+            return 0
+        fi
+        log_message_debug "Waiting for stop: $RETVAL"
+        sleep 0.5
+    done
+    log_message_debug "Waiting for stop timed out: $RETVAL"
+
+    return $RETVAL
 }
 
 case "$1" in
   start)
-    [ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+    log_message_daemon "Starting $DESC" "$NAME"
     do_start
     RETVAL=$?
     case $RETVAL in
-      0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+      0) log_message_end 0;;
+      *) log_message_end 1;;
     esac
     ;;
   stop)
-    [ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
+    log_message_daemon "Stopping $DESC" "$NAME"
     do_stop
     RETVAL=$?
     case $RETVAL in
-      0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+      0) log_message_end 0;;
+      *) log_message_end 1;;
     esac
     ;;
   restart|force-reload)
-    log_daemon_msg "Restarting $DESC" "$NAME"
+    log_message_daemon "Restarting $DESC" "$NAME"
     do_stop
     RETVAL=$?
     case $RETVAL in
-      0)
-        do_start
-        RETVAL=$?
-        case $RETVAL in
-          0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-          *) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Failed to start
-        esac
-        ;;
-      *) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Failed to stop
+      0) log_message_end 0;;
+      *) log_message_end 1;;
+    esac
+    if [ $RETVAL -eq 0 ]; then
+      do_start
+      RETVAL=$?
+      case $RETVAL in
+        0) log_message_end 0;;
+        *) log_message_end 1;;
       esac
-      ;;
+    fi
+    ;;
   status)
     is_running
     RETVAL=$?
-    case $RETVAL in
-      0) log_success_msg "$DESC is running" ;;
-      4) log_success_msg "$DESC no permission to read $PIDFILE (run as root)" ;;
-      *) log_success_msg "$DESC is not running" ;;
-    esac
     ;;
-  reload|try-restart|condrestart)
-    echo "$0: Unimplemented feature."
-    RETVAL=3
+  try-restart|condrestart)
+    log_message_daemon "Restarting $DESC" "$NAME"
+    if [ -f /var/lock/subsys/$servicename ]; then
+      do_stop
+      RETVAL=$?
+      case $RETVAL in
+        0) log_message_end 0;;
+        *) log_message_end 1;;
+      esac
+      if [ $RETVAL -eq 0 ]; then
+        do_start
+        RETVAL=$?
+        case $RETVAL in
+          0) log_message_end 0;;
+          *) log_message_end 1;;
+        esac
+      fi
+    else
+      log_message " Aborted (no lock file)"
+    fi
+    ;;
+  reload)
+    log_message_daemon "$0: Unimplemented feature" "reload"
+    log_message_end 3
     ;;
   *)
-    echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload|status}" >&2
+    log_message "Usage: $SCRIPTNAME {start|stop|restart|force-reload|status}" >&2
     RETVAL=2
     ;;
 esac
 
 exit $RETVAL
-
-# vi:ai sw=4 ts=4 tw=0 et
