@@ -6,11 +6,6 @@
 # JMX-to-web bridge install libmx4j-java and uncomment the following.
 EXTRA_CLASSPATH="<%=node[:datastax][:dse][:extra_classpath]%>"
 
-<% if node[:datastax][:dse][:spark_enabled] == true
-     node.default[:datastax][:dse][:hadoop_enabled] = true
-   end
-%>
-
 # enable this to start Hadoop's JobTracker and/or TaskTrackers on this machine.
 # If left disabled, this will act as a regular Cassandra node.
 HADOOP_ENABLED=<%=node[:datastax][:dse][:hadoop_enabled] ? 1 : 0%>
