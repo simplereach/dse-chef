@@ -17,8 +17,10 @@ end
 
 if version < Semantic::Version.new('4.0.0')
   yaml_source = 'cassandra-1.2.yaml.erb'
+  init_script = 'dse-4.0.init.erb'
 else # version <= Semantic::Version.new('4.5.1')
   yaml_source = 'cassandra-2.0.yaml.erb'
+  init_script = 'dse-4.5.init.erb'
 end
 
 directory node[:datastax][:cassandra][:saved_caches_directory] do
@@ -78,5 +80,5 @@ template '/etc/init.d/dse' do
   owner 'root'
   group 'root'
   mode '0755'
-  source 'dse.init.erb'
+  source init_script
 end
