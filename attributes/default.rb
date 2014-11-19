@@ -27,6 +27,9 @@ default[:datastax][:opscenter][:version] = '4.1.4-1'  #Opscenter version
 default[:datastax][:opscenter][:use_ssl] = true     #Agent SSL Communication
 default[:datastax][:opscenter][:agent_tarball_location] = nil #Tarball location for agent
 
+default[:datastax][:opscenter][:server_version] = '5.0.1'
+default[:datastax][:opscenter][:debian_apt_url] = nil
+
 # Default versions
 # we list out all the verions here to ensure that Debian/Ubuntu based package management
 # can downgrade properly
