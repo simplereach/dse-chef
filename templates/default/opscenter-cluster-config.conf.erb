@@ -1,0 +1,20 @@
+[jmx]
+username =
+password =
+port = 7199
+
+[kerberos_client_principals]
+
+[kerberos]
+
+[agents]
+
+[kerberos_hostnames]
+
+[kerberos_services]
+
+[cassandra]
+username =
+seed_hosts = <%= @config['cassandra']['seed_hosts'].join(',') %>
+api_port = <%= @config['cassandra']['api_port'] %>
+password =
