@@ -500,7 +500,7 @@ default[:datastax][:cassandra][:in_memory_compaction_limit_in_mb] = 64
 #
 # concurrent_compactors defaults to the number of cores.
 # Uncomment to make compaction mono-threaded, the pre-0.8 default.
-#concurrent_compactors: 1
+default[:datastax][:cassandra][:concurrent_compactors] = 1
 
 # Multi-threaded compaction. When enabled, each compaction will use
 # up to one thread per core, plus one thread per sstable being merged.
