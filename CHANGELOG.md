@@ -2,6 +2,9 @@
 
 This file is used to list changes made in each version of the dse-chef cookbook.
 
+## 0.1.1
+* adding *opscenter-agent* user to *ohai*
+
 ## 0.1.0
 * adding *concurrent_compactors* to configuration attributes `node[:datastax][:cassandra][:concurrent_compactors]`
 * adding *datastax* data bag item example
