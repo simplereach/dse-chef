@@ -29,6 +29,22 @@ else
   opscenter_host = opscenter_hosts[0].ipaddress
 end
 
+# setup our users
+ohai 'reload_passwd' do
+  action :nothing
+  if Ohai::VERSION >= '7.0.0'
+    plugin 'etc'
+  else
+    plugin 'passwd'
+  end
+end
+
+user 'opscenter-agent' do
+  action :create
+  system true
+end
+ohai 'reload_passwd'
+
 execute 'install opscenter-agent' do
   cwd Chef::Config[:file_cache_path]
   command <<-EOF
